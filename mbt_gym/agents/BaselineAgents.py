@@ -197,3 +197,82 @@ class CarteaJaimungalOeAgent(Agent):
             )
         )
         return -np.sign(initial_inventory) * action
+
+
+
+class FayLeoMmAgent(Agent):
+    def __init__(
+        self,
+        env: TradingEnvironment = None,
+        min_inventory: int = 100,
+        max_inventory: int = 150,
+    ):
+        self.env = env or TradingEnvironment()
+        assert self.env.action_type == "limit"
+        assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for CjMmAgent is incorrect."
+        self.kappa = self.env.fill_probability_model.fill_exponent
+        self.num_trajectories = self.env.num_trajectories
+        if isinstance(self.env.reward_function, PnL):
+            self.inventory_neutral = True
+            self.risk_neutral_action = 1 / self.kappa * np.ones((env.num_trajectories, env.action_space.shape[0]))
+        else:
+            self.inventory_neutral = False
+            self.phi = env.reward_function.per_step_inventory_aversion
+            self.alpha = env.reward_function.terminal_inventory_aversion
+            assert self.env.reward_function.inventory_exponent == 2.0, "Inventory exponent must be = 2."
+            self.terminal_time = self.env.terminal_time
+            self.lambdas = self.env.arrival_model.intensity
+            self.max_inventory = max_inventory
+            self.a_matrix, self.z_vector = self._calculate_a_and_z()
+            self.large_depth = 10_000
+
+    def get_action(self, state: np.ndarray):
+        if self.inventory_neutral:
+            return self.risk_neutral_action
+        else:
+            assert (
+                state[0, TIME_INDEX] == state[-1, TIME_INDEX]
+            ), "CarteaJaimungalMmAgent needs to be called on a tensor with a uniform time stamp."
+            current_time = state[0, TIME_INDEX]
+            inventories = state[:, INVENTORY_INDEX]
+            return self._calculate_deltas(inventories=inventories, current_time=current_time)
+
+    def _calculate_deltas(self, current_time: float, inventories: np.ndarray):
+        deltas = np.zeros(shape=(self.num_trajectories, 2))
+        h_t = self._calculate_ht(current_time)
+        # If the inventory goes above the max level, we quote a large depth to bring it back and quote on the opposite
+        # side as if we had an inventory equal to sign(inventory) * self.max_inventory.
+        indices = np.clip(self.max_inventory + inventories, 0, 2 * self.max_inventory)
+        indices = indices.astype(int)
+        indices_minus_one = np.clip(indices - 1, 0, 2 * self.max_inventory)
+        indices_plus_one = np.clip(indices + 1, 0, 2 * self.max_inventory)
+        h_0 = h_t[indices]
+        h_plus_one = h_t[indices_plus_one]
+        h_minus_one = h_t[indices_minus_one]
+        max_inventory_bid = h_plus_one == h_0
+        max_inventory_ask = h_minus_one == h_0
+        deltas[:, BID_INDEX] = (1 / self.kappa - h_plus_one + h_0 + self.large_depth * max_inventory_bid).reshape(-1)
+        deltas[:, ASK_INDEX] = (1 / self.kappa - h_minus_one + h_0 + self.large_depth * max_inventory_ask).reshape(-1)
+        return deltas
+
+    def _calculate_ht(self, current_time: float) -> float:
+        omega_function = self._calculate_omega(current_time)
+        return 1 / self.kappa * np.log(omega_function)
+
+    def _calculate_omega(self, current_time: float):
+        """This is Equation (10.11) from [CJP15]."""
+        return np.matmul(expm(self.a_matrix * (self.terminal_time - current_time)), self.z_vector)
+
+    def _calculate_a_and_z(self):
+        matrix_size = 2 * self.max_inventory + 1
+        Amatrix = np.zeros(shape=(matrix_size, matrix_size))
+        z_vector = np.zeros(shape=(matrix_size, 1))
+        for i in range(matrix_size):
+            inventory = self.max_inventory - i
+            Amatrix[i, i] = -self.phi * self.kappa * inventory**2
+            z_vector[i, 0] = np.exp(-self.alpha * self.kappa * inventory**2)
+            if i + 1 < matrix_size:
+                Amatrix[i, i + 1] = self.lambdas[0] * np.exp(-1)
+            if i > 0:
+                Amatrix[i, i - 1] = self.lambdas[1] * np.exp(-1)
+        return Amatrix, z_vector

@@ -1,6 +1,5 @@
 from math import sqrt
 from typing import Optional
-import pdb; 
 import numpy as np
 
 from mbt_gym.stochastic_processes.StochasticProcessModel import StochasticProcessModel
