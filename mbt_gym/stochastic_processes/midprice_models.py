@@ -28,7 +28,7 @@ class ConstantMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         pass
 
 
@@ -56,7 +56,7 @@ class BrownianMotionMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         self.current_state = (
             self.current_state
             + self.drift * self.step_size * np.ones((self.num_trajectories, 1))
@@ -91,7 +91,7 @@ class GeometricBrownianMotionMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         self.current_state = (
             self.current_state
             + self.drift * self.current_state * self.step_size
@@ -136,7 +136,7 @@ class OuMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         self.current_state += -self.mean_reversion_speed * (
             self.current_state - self.mean_reversion_level * np.ones((self.num_trajectories, 1))
         ) + self.volatility * sqrt(self.step_size) * self.rng.normal(size=(self.num_trajectories, 1))
@@ -176,7 +176,7 @@ class ShortTermOuAlphaMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         self.current_state[:, 0] = (
             self.current_state[:, 0]
             + self.ou_process.current_state * self.step_size * np.ones((self.num_trajectories, 1))
@@ -215,7 +215,7 @@ class BrownianMotionJumpMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         fills_bid = fills[:, 0]
         fills_ask = fills[:, 1]
         self.current_state = (
@@ -258,7 +258,7 @@ class OuJumpMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         fills_bid = fills[:, 0]
         fills_ask = fills[:, 1]
         self.current_state = (
@@ -307,7 +307,7 @@ class ShortTermJumpAlphaMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         self.current_state[:, 0] = (
             self.current_state[:, 0]
             + self.ou_jump_process.current_state * self.step_size * np.ones((self.num_trajectories, 1))
@@ -352,7 +352,7 @@ class HestonMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         weiner_means = np.array([0, 0])
         weiner_corr = np.array([[1, self.weiner_correlation], [self.weiner_correlation, 1]])
         weiners = np.random.multivariate_normal(weiner_means, cov=weiner_corr, size=self.num_trajectories)
@@ -399,7 +399,7 @@ class ConstantElasticityOfVarianceMidpriceModel(MidpriceModel):
             seed=seed,
         )
 
-    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray) -> np.ndarray:
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
         self.current_state = (
             self.current_state
             + self.current_state * self.drift * self.step_size  # *np.ones((self.num_trajectories, 1))
@@ -407,6 +407,44 @@ class ConstantElasticityOfVarianceMidpriceModel(MidpriceModel):
             * (self.current_state**self.gamma)
             * np.sqrt(self.step_size)
             * np.random.normal(size=self.num_trajectories)
+        )
+
+    def _get_max_value(self, initial_price, terminal_time):
+        return initial_price + 4 * self.volatility * terminal_time
+
+
+
+class AmmSelfContainedMidpriceModel(MidpriceModel):
+    def __init__(
+        self,
+        jump_size: float = 1.0,
+        initial_price: float = 100,
+        terminal_time: float = 1.0,
+        step_size: float = 0.01,
+        num_trajectories: int = 1,
+        seed: Optional[int] = None,
+    ):
+        self.jump_size = jump_size
+        self.terminal_time = terminal_time
+        super().__init__(
+            min_value=np.array([[initial_price - (self._get_max_value(initial_price, terminal_time) - initial_price)]]),
+            max_value=np.array([[self._get_max_value(initial_price, terminal_time)]]),
+            step_size=step_size,
+            terminal_time=terminal_time,
+            initial_state=np.array([[initial_price]]),
+            num_trajectories=num_trajectories,
+            seed=seed,
+        )
+
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray) -> np.ndarray:
+        fills_bid = fills[:, 0]
+        fills_ask = fills[:, 1]
+        self.current_state = (
+            self.current_state
+            + self.drift * self.step_size * np.ones((self.num_trajectories, 1))
+            + self.volatility * sqrt(self.step_size) * self.rng.normal(size=(self.num_trajectories, 1))
+            - self.jump_size * fills_bid
+            + self.jump_size * fills_ask
         )
 
     def _get_max_value(self, initial_price, terminal_time):
