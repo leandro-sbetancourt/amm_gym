@@ -9,7 +9,7 @@ from mbt_gym.agents.Agent import Agent
 from mbt_gym.gym.TradingEnvironment import TradingEnvironment, INVENTORY_INDEX, TIME_INDEX, BID_INDEX, ASK_INDEX
 from mbt_gym.rewards.RewardFunctions import CjMmCriterion, PnL
 from mbt_gym.stochastic_processes.price_impact_models import PriceImpactModel, TemporaryAndPermanentPriceImpact
-
+from mbt_gym.stochastic_processes.midprice_models import AmmSelfContainedMidpriceModel
 
 class RandomAgent(Agent):
     def __init__(self, env: gym.Env, seed: int = None):
@@ -204,13 +204,13 @@ class FayLeoMmAgent(Agent):
     def __init__(
         self,
         env: TradingEnvironment = None,
-        min_inventory: int = 100,
         max_inventory: int = 150,
     ):
         self.env = env or TradingEnvironment()
         assert self.env.action_type == "limit"
-        assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for CjMmAgent is incorrect."
-        self.kappa = self.env.fill_probability_model.fill_exponent
+        assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for AmmAgent is incorrect."
+        assert isinstance(self.env.midprice_model, AmmSelfContainedMidpriceModel), "Midprice model for AMM trader is incorrect."
+        self.kappa = self.env.fill_probability_model.fill_exponent / self.env.midprice_model.jump_size_L
         self.num_trajectories = self.env.num_trajectories
         if isinstance(self.env.reward_function, PnL):
             self.inventory_neutral = True
