@@ -1,11 +1,21 @@
 from math import sqrt
 from typing import Optional
-
+import pdb; 
 import numpy as np
 
 from mbt_gym.stochastic_processes.StochasticProcessModel import StochasticProcessModel
 
 MidpriceModel = StochasticProcessModel
+
+BID_INDEX = 0
+ASK_INDEX = 1
+
+
+CASH_INDEX = 0
+INVENTORY_INDEX = 1
+TIME_INDEX = 2
+ASSET_PRICE_INDEX = 3
+
 
 
 class ConstantMidpriceModel(MidpriceModel):
@@ -216,14 +226,13 @@ class BrownianMotionJumpMidpriceModel(MidpriceModel):
         )
 
     def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
-        fills_bid = fills[:, 0]
-        fills_ask = fills[:, 1]
+        fills_bid = fills[:, BID_INDEX] * arrivals[:, BID_INDEX]
+        fills_ask = fills[:, ASK_INDEX] * arrivals[:, ASK_INDEX]
         self.current_state = (
             self.current_state
             + self.drift * self.step_size * np.ones((self.num_trajectories, 1))
             + self.volatility * sqrt(self.step_size) * self.rng.normal(size=(self.num_trajectories, 1))
-            - self.jump_size * fills_bid
-            + self.jump_size * fills_ask
+            + (self.jump_size * fills_ask - self.jump_size * fills_bid).reshape(-1,1)
         )
 
     def _get_max_value(self, initial_price, terminal_time):
@@ -246,7 +255,7 @@ class OuJumpMidpriceModel(MidpriceModel):
         self.mean_reversion_level = mean_reversion_level
         self.mean_reversion_speed = mean_reversion_speed
         self.volatility = volatility
-        self.jump_size = self.jump_size
+        self.jump_size = jump_size
         self.terminal_time = terminal_time
         super().__init__(
             min_value=np.array([[initial_price - (self._get_max_value(initial_price, terminal_time) - initial_price)]]),
@@ -259,15 +268,14 @@ class OuJumpMidpriceModel(MidpriceModel):
         )
 
     def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
-        fills_bid = fills[:, 0]
-        fills_ask = fills[:, 1]
+        fills_bid = fills[:, BID_INDEX] * arrivals[:, BID_INDEX]
+        fills_ask = fills[:, ASK_INDEX] * arrivals[:, ASK_INDEX]
         self.current_state = (
             self.current_state
             - self.mean_reversion_speed
             * (self.current_state - self.mean_reversion_level * np.ones((self.num_trajectories, 1)))
-            + self.volatility * sqrt(self.step_size) * self.rng.normal(size=(self.num_trajectories, 1))
-            - self.jump_size * fills_bid
-            + self.jump_size * fills_ask
+            + self.volatility * sqrt(self.step_size) * self.rng.normal(size=(self.num_trajectories, 1))            
+            + (self.jump_size * fills_ask - self.jump_size * fills_bid).reshape(-1,1)
         )
 
     def _get_max_value(self, initial_price, terminal_time):
@@ -417,15 +425,17 @@ class ConstantElasticityOfVarianceMidpriceModel(MidpriceModel):
 class AmmSelfContainedMidpriceModel(MidpriceModel):
     def __init__(
         self,
-        jump_size: float = 1.0,
+        jump_size_L: float = 1.0,
         initial_price: float = 100,
         terminal_time: float = 1.0,
         step_size: float = 0.01,
         num_trajectories: int = 1,
+        unit_size: float = 1,
         seed: Optional[int] = None,
     ):
-        self.jump_size = jump_size
+        self.jump_size_L = jump_size_L
         self.terminal_time = terminal_time
+        self.unit_size = unit_size
         super().__init__(
             min_value=np.array([[initial_price - (self._get_max_value(initial_price, terminal_time) - initial_price)]]),
             max_value=np.array([[self._get_max_value(initial_price, terminal_time)]]),
@@ -437,15 +447,15 @@ class AmmSelfContainedMidpriceModel(MidpriceModel):
         )
 
     def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray) -> np.ndarray:
-        fills_bid = fills[:, 0]
-        fills_ask = fills[:, 1]
+        fills_bid = fills[:, BID_INDEX] * arrivals[:, BID_INDEX]
+        fills_ask = fills[:, ASK_INDEX] * arrivals[:, ASK_INDEX]
+        previous_inventory = state[:, INVENTORY_INDEX] - fills_bid + fills_ask
+        eta_ask = self.unit_size /( self.jump_size_L  * (previous_inventory - self.unit_size))
+        eta_bid = self.unit_size /( self.jump_size_L  * (previous_inventory + self.unit_size))
         self.current_state = (
             self.current_state
-            + self.drift * self.step_size * np.ones((self.num_trajectories, 1))
-            + self.volatility * sqrt(self.step_size) * self.rng.normal(size=(self.num_trajectories, 1))
-            - self.jump_size * fills_bid
-            + self.jump_size * fills_ask
+            +  (fills_ask * eta_ask -  fills_bid * eta_bid).reshape(-1,1)
         )
 
     def _get_max_value(self, initial_price, terminal_time):
-        return initial_price + 4 * self.volatility * terminal_time
+        return initial_price * 2 
