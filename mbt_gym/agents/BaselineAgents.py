@@ -264,7 +264,7 @@ class FayLeoMmAgent(Agent):
 
     def _calculate_a_and_z(self):
         matrix_size = 2 * self.max_inventory + 1
-        Amatrix = np.zeros(shape=(matrix_size, matrix_size))
+        Amatrix  = np.zeros(shape=(matrix_size, matrix_size))
         z_vector = np.zeros(shape=(matrix_size, 1))
         for i in range(matrix_size):
             inventory = self.max_inventory - i

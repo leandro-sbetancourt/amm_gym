@@ -2,6 +2,7 @@ import gym
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import matplotlib.ticker as mtick
 
 import seaborn as sns
 
@@ -27,22 +28,28 @@ def plot_trajectory(env: gym.Env, agent: Agent, seed: int = None):
     cash_holdings = observations[:, CASH_INDEX, :]
     inventory = observations[:, INVENTORY_INDEX, :]
     asset_prices = observations[:, ASSET_PRICE_INDEX, :]
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(20, 10))
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(20, 10), constrained_layout=True)
     ax3a = ax3.twinx()
     ax1.title.set_text("cum_rewards")
     ax2.title.set_text("asset_prices")
     ax3.title.set_text("inventory and cash holdings")
     ax4.title.set_text("Actions")
+
+    for ax in (ax1, ax2, ax3, ax4):
+        ax.grid(axis='both')
+        ax.yaxis.set_major_formatter(mtick.StrMethodFormatter('{x:,.2f}'))
+
     for i in range(env.num_trajectories):
         traj_label = f" trajectory {i}" if env.num_trajectories > 1 else ""
-        ax1.plot(timestamps[1:], cum_rewards[i, :])
-        ax2.plot(timestamps, asset_prices[i, :])
+        ax1.plot(timestamps[1:], cum_rewards[i, :], lw=3)
+        ax2.plot(timestamps, asset_prices[i, :], lw=3)
         ax3.plot(
             timestamps,
             inventory[i, :],
             label=f"inventory" + traj_label,
             color="r",
             alpha=(i + 1) / (env.num_trajectories + 1),
+            lw=3
         )
         ax3a.plot(
             timestamps,
@@ -50,6 +57,7 @@ def plot_trajectory(env: gym.Env, agent: Agent, seed: int = None):
             label=f"cash holdings" + traj_label,
             color="b",
             alpha=(i + 1) / (env.num_trajectories + 1),
+            lw=3
         )
         for j in range(action_dim):
             ax4.plot(
@@ -58,6 +66,7 @@ def plot_trajectory(env: gym.Env, agent: Agent, seed: int = None):
                 label=f"Action {j}" + traj_label,
                 color=colors[j],
                 alpha=(i + 1) / (env.num_trajectories + 1),
+            lw=3
             )
     ax3.legend()
     ax4.legend()
