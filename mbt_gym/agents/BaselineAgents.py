@@ -207,7 +207,6 @@ class FayLeoMmAgent(Agent):
         max_inventory: int = 150,
     ):
         self.env = env or TradingEnvironment()
-        assert self.env.action_type == "limit"
         assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for AmmAgent is incorrect."
         assert isinstance(self.env.midprice_model, AmmSelfContainedMidpriceModel), "Midprice model for AMM trader is incorrect."
         self.kappa = self.env.fill_probability_model.fill_exponent / self.env.midprice_model.jump_size_L
