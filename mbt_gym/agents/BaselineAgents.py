@@ -251,8 +251,8 @@ class FayLeoMmAgent(Agent):
         h_minus_one = h_t[indices_minus_one]
         max_inventory_bid = h_plus_one == h_0
         max_inventory_ask = h_minus_one == h_0
-        deltas[:, BID_INDEX] = (1 / self.kappa - h_plus_one + h_0 + self.large_depth * max_inventory_bid).reshape(-1)
-        deltas[:, ASK_INDEX] = (1 / self.kappa - h_minus_one + h_0 + self.large_depth * max_inventory_ask).reshape(-1)
+        deltas[:, BID_INDEX] = (1 / self.kappa - h_plus_one + h_0 + self.large_depth * max_inventory_bid - 1/self.env.midprice_model.jump_size_L).reshape(-1)
+        deltas[:, ASK_INDEX] = (1 / self.kappa - h_minus_one + h_0 + self.large_depth * max_inventory_ask + 1/self.env.midprice_model.jump_size_L).reshape(-1)
         return deltas
 
     def _calculate_ht(self, current_time: float) -> float:
@@ -269,10 +269,10 @@ class FayLeoMmAgent(Agent):
         z_vector = np.zeros(shape=(matrix_size, 1))
         for i in range(matrix_size):
             inventory = self.max_inventory - i
-            Amatrix[i, i] = -self.phi * self.kappa * inventory**2
-            z_vector[i, 0] = np.exp(-self.alpha * self.kappa * inventory**2)
+            Amatrix[i, i] = -self.phi * self.kappa * self.env.trader.unit_size * inventory**2
+            z_vector[i, 0] = np.exp(-self.alpha * self.kappa * self.env.trader.unit_size * inventory**2)
             if i + 1 < matrix_size:
-                Amatrix[i, i + 1] = self.lambdas[0] * np.exp(-1)
+                Amatrix[i, i + 1] = self.lambdas[BID_INDEX] * np.exp(-1) * np.exp(-self.kappa / self.env.midprice_model.jump_size_L)
             if i > 0:
-                Amatrix[i, i - 1] = self.lambdas[1] * np.exp(-1)
+                Amatrix[i, i - 1] = self.lambdas[ASK_INDEX] * np.exp(-1) * np.exp(self.kappa / self.env.midprice_model.jump_size_L)
         return Amatrix, z_vector
