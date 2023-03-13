@@ -205,12 +205,14 @@ class FayLeoMmAgent(Agent):
         self,
         env: TradingEnvironment = None,
         max_inventory: int = 150,
+        target_inventory: int = 100,
     ):
         self.env = env or TradingEnvironment()
         assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for AmmAgent is incorrect."
         assert isinstance(self.env.midprice_model, AmmSelfContainedMidpriceModel), "Midprice model for AMM trader is incorrect."
         self.kappa = self.env.fill_probability_model.fill_exponent / self.env.midprice_model.jump_size_L
         self.num_trajectories = self.env.num_trajectories
+        self.target_inventory = target_inventory
         if isinstance(self.env.reward_function, PnL):
             self.inventory_neutral = True
             self.risk_neutral_action = 1 / self.kappa * np.ones((env.num_trajectories, env.action_space.shape[0]))
@@ -268,8 +270,8 @@ class FayLeoMmAgent(Agent):
         z_vector = np.zeros(shape=(matrix_size, 1))
         for i in range(matrix_size):
             inventory = self.max_inventory - i
-            Amatrix[i, i] = -self.phi * self.kappa * self.env.trader.unit_size * inventory**2
-            z_vector[i, 0] = np.exp(-self.alpha * self.kappa * self.env.trader.unit_size * inventory**2)
+            Amatrix[i, i] = -self.phi * self.kappa * self.env.trader.unit_size * (inventory-self.target_inventory)**2
+            z_vector[i, 0] = np.exp(-self.alpha * self.kappa * self.env.trader.unit_size * (inventory-self.target_inventory)**2)
             if i + 1 < matrix_size:
                 Amatrix[i, i + 1] = self.lambdas[BID_INDEX] * np.exp(-1) * np.exp(-self.kappa / self.env.midprice_model.jump_size_L)
             if i > 0:
