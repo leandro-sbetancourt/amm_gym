@@ -205,12 +205,13 @@ class FayLeoMmAgent(Agent):
         self,
         env: TradingEnvironment = None,
         max_inventory: int = 150,
+        min_inventory: int = 1,
         target_inventory: int = 100,
     ):
         self.env = env or TradingEnvironment()
         assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for AmmAgent is incorrect."
         assert isinstance(self.env.midprice_model, AmmSelfContainedMidpriceModel), "Midprice model for AMM trader is incorrect."
-        self.kappa = self.env.fill_probability_model.fill_exponent / self.env.midprice_model.jump_size_L
+        self.kappa = self.env.fill_probability_model.fill_exponent 
         self.num_trajectories = self.env.num_trajectories
         self.target_inventory = target_inventory
         if isinstance(self.env.reward_function, PnL):
@@ -223,7 +224,10 @@ class FayLeoMmAgent(Agent):
             assert self.env.reward_function.inventory_exponent == 2.0, "Inventory exponent must be = 2."
             self.terminal_time = self.env.terminal_time
             self.lambdas = self.env.arrival_model.intensity
+            
             self.max_inventory = max_inventory
+            self.min_inventory = min_inventory
+            self.max_index  = 1 + int((self.max_inventory - self.min_inventory)/self.env.trader.unit_size)
             self.a_matrix, self.z_vector = self._calculate_a_and_z()
             self.large_depth = 10_000
 
@@ -243,15 +247,16 @@ class FayLeoMmAgent(Agent):
         h_t = self._calculate_ht(current_time)
         # If the inventory goes above the max level, we quote a large depth to bring it back and quote on the opposite
         # side as if we had an inventory equal to sign(inventory) * self.max_inventory.
-        indices = np.clip(self.max_inventory + inventories, 0, 2 * self.max_inventory)
+        
+        indices = np.clip( int((inventories-self.min_inventory)/self.env.trader.unit_size), 0, self.max_index)
         indices = indices.astype(int)
-        indices_minus_one = np.clip(indices - 1, 0, 2 * self.max_inventory)
-        indices_plus_one = np.clip(indices + 1, 0, 2 * self.max_inventory)
+        indices_minus_one = np.clip(indices - 1, 0, self.max_index)
+        indices_plus_one = np.clip(indices + 1, 0, self.max_index)
         h_0 = h_t[indices]
         h_plus_one = h_t[indices_plus_one]
         h_minus_one = h_t[indices_minus_one]
-        max_inventory_bid = h_plus_one == h_0
-        max_inventory_ask = h_minus_one == h_0
+        max_inventory_bid = indices_plus_one == indices
+        max_inventory_ask = indices_minus_one == indices
         deltas[:, BID_INDEX] = (1 / self.kappa - h_plus_one + h_0 + self.large_depth * max_inventory_bid - 1/self.env.midprice_model.jump_size_L).reshape(-1)
         deltas[:, ASK_INDEX] = (1 / self.kappa - h_minus_one + h_0 + self.large_depth * max_inventory_ask + 1/self.env.midprice_model.jump_size_L).reshape(-1)
         return deltas
@@ -265,11 +270,11 @@ class FayLeoMmAgent(Agent):
         return np.matmul(expm(self.a_matrix * (self.terminal_time - current_time)), self.z_vector)
 
     def _calculate_a_and_z(self):
-        matrix_size = 2 * self.max_inventory + 1
-        Amatrix  = np.zeros(shape=(matrix_size, matrix_size))
-        z_vector = np.zeros(shape=(matrix_size, 1))
+        matrix_size = self.max_index
+        Amatrix     = np.zeros(shape=(matrix_size, matrix_size))
+        z_vector    = np.zeros(shape=(matrix_size, 1))
         for i in range(matrix_size):
-            inventory = self.max_inventory - i
+            inventory = self.max_inventory - i*self.env.trader.unit_size
             Amatrix[i, i] = -self.phi * self.kappa * self.env.trader.unit_size * (inventory-self.target_inventory)**2
             z_vector[i, 0] = np.exp(-self.alpha * self.kappa * self.env.trader.unit_size * (inventory-self.target_inventory)**2)
             if i + 1 < matrix_size:

@@ -42,7 +42,8 @@ class TradingEnvironment(gym.Env):
         trader: Trader = None,
         initial_cash: float = 0.0,
         initial_inventory: Union[int, Tuple[float, float]] = 0,  # Either a deterministic initial inventory, or a tuple
-        max_inventory: int = 10_000,  # representing the mean and variance of it.
+        min_inventory: int = 100,  # representing the mean and variance of it.
+        max_inventory: int = 150,  # representing the mean and variance of it.
         max_cash: float = None,
         max_stock_price: float = None,
         start_time: Union[float, int, Callable] = 0.0,
@@ -75,6 +76,9 @@ class TradingEnvironment(gym.Env):
         self.initial_cash = initial_cash
         self.initial_inventory = initial_inventory
         self.max_inventory = max_inventory
+        self.min_inventory = min_inventory
+        assert max_inventory>min_inventory, "Please provide a min inventory that is less than the max inventory"
+
         if seed:
             self.seed(seed)
         self.rng = np.random.default_rng(seed)
