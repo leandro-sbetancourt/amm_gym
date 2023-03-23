@@ -1,3 +1,6 @@
 *.pyc
 *.pyc
 .DS_Store
+notebooks/.ipynb_checkpoints/game_AMM_two_agents-checkpoint.ipynb
+notebooks/.ipynb_checkpoints/AMM agent-checkpoint.ipynb
+mbt_gym/agents/__pycache__/BaselineAgents.cpython-39.pyc
