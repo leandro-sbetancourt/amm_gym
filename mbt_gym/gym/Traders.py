@@ -21,7 +21,6 @@ from mbt_gym.stochastic_processes.fill_probability_models import FillProbability
 from mbt_gym.stochastic_processes.midprice_models import MidpriceModel
 from mbt_gym.stochastic_processes.price_impact_models import PriceImpactModel
 
-
 class Trader(metaclass=abc.ABCMeta):
     def __init__(
         self,
@@ -281,62 +280,6 @@ class TradinghWithSpeedTrader(Trader):
         return processes
 
 
-class AmmArbitrageur(Trader):
-    """Trader in the AMM setup of Fay & Leo."""
-    def __init__(
-        self,
-        midprice_model : MidpriceModel  = None,
-        exogprice_model : MidpriceModel  = None,
-        arrival_model : ArrivalModel  = None,
-        fill_probability_model : FillProbabilityModel  = None,
-        num_trajectories: int = 1,
-        seed: int = None,
-        max_depth : float = None,
-        unit_size : float = None,
-    ):
-        super().__init__(midprice_model = midprice_model,
-                        arrival_model = arrival_model,
-                        fill_probability_model = fill_probability_model, 
-                        num_trajectories = num_trajectories,
-                        seed = seed)
-        self.exogprice_model = exogprice_model
-        self.exogprice_history = []
-        self.max_depth = max_depth or self._get_max_depth()
-        self.unit_size = unit_size or 1.0
-        self.required_processes = self.get_required_stochastic_processes()
-        self._check_processes_are_not_none(self.required_processes)
-        self.round_initial_inventory = False
-        
-    def update_state(self, state: np.ndarray, arrivals: np.ndarray, fills: np.ndarray, action: np.ndarray):
-        state[:, INVENTORY_INDEX] += np.sum(arrivals * fills * -self._fill_multiplier * self.unit_size, axis=1)
-        state[:, CASH_INDEX] += np.sum(
-                self._fill_multiplier
-                * arrivals
-                * fills
-                * self.unit_size
-                * (self.midprice + self._limit_depths(action) * self._fill_multiplier),
-                axis=1,
-            )
-
-    def get_action_space(self) -> gym.spaces.Space:
-        assert self.max_depth is not None, "For limit orders max_depth cannot be None."
-        # agent chooses spread on bid and ask
-        return gym.spaces.Box(low=np.float32(0.0), high=np.float32(self.max_depth), shape=(2,))
-    
-    def get_required_stochastic_processes(self):
-        processes = ["arrival_model", "fill_probability_model"]
-        return processes
-
-    def get_arrivals_and_fills(self, action: np.ndarray):
-        # I update my exog information
-        self.exogprice_model.update(None, None, None)
-        self.exogprice_history += []
-        
-        arrivals = self.arrival_model.get_arrivals()
-        depths = self._limit_depths(action)
-        fills = self.fill_probability_model.get_fills(depths)
-        return arrivals, fills
-
 
 class AmmTrader(Trader):
     """Trader in the AMM setup of Fay & Leo."""
@@ -388,3 +331,34 @@ class AmmTrader(Trader):
         fills = self.fill_probability_model.get_fills(depths)
         return arrivals, fills
 
+
+class MarketOrderTrader(Trader):
+    """Trader for 'market'."""
+    def __init__(
+        self,
+        num_trajectories: int = 1,
+        min_size: int = -10,
+        max_size: int = 10,
+        seed: int = None,
+    ):
+        super().__init__(num_trajectories = num_trajectories,
+                        seed = seed)
+        self.min_size = min_size
+        self.max_size = max_size
+        self.required_processes = self.get_required_stochastic_processes()
+        self._check_processes_are_not_none(self.required_processes)
+        self.round_initial_inventory = True
+
+    def update_state(self, state: np.ndarray, arrivals: np.ndarray, fills: np.ndarray, action: np.ndarray):
+        price = state[:,ASSET_PRICE_INDEX]
+
+        action = np.clip(action, self.min_size, self.max_size).reshape(-1,)
+        state[:, CASH_INDEX] -= action * price
+        state[:, INVENTORY_INDEX] += action
+        
+    def get_action_space(self) -> gym.spaces.Space:
+        return gym.spaces.Box(low=np.float32(-self.min_size), high=np.float32(self.max_size), shape=(1,))
+    
+    def get_required_stochastic_processes(self):
+        processes = []
+        return processes
