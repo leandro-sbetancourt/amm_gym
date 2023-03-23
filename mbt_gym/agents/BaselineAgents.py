@@ -200,12 +200,12 @@ class CarteaJaimungalOeAgent(Agent):
 
 
 
-class FayLeoMmAgent(Agent):
+class PoolMmAgent(Agent):
     def __init__(
         self,
         env: TradingEnvironment = None,
-        max_inventory: int = 150,
-        min_inventory: int = 1,
+        max_inventory: int = 200,
+        min_inventory: int = 0,
         target_inventory: int = 100,
     ):
         self.env = env or TradingEnvironment()
@@ -227,7 +227,7 @@ class FayLeoMmAgent(Agent):
             
             self.max_inventory = max_inventory
             self.min_inventory = min_inventory
-            self.max_index  = 1 + int((self.max_inventory - self.min_inventory)/self.env.trader.unit_size)
+            self.max_index  =  int((self.max_inventory - self.min_inventory)/self.env.trader.unit_size)
             self.a_matrix, self.z_vector = self._calculate_a_and_z()
             self.large_depth = 10_000
 
@@ -247,11 +247,19 @@ class FayLeoMmAgent(Agent):
         h_t = self._calculate_ht(current_time)
         # If the inventory goes above the max level, we quote a large depth to bring it back and quote on the opposite
         # side as if we had an inventory equal to sign(inventory) * self.max_inventory.
+        print('\n')
+        print('min inventory= ', self.min_inventory, ', max inventory:', self.max_inventory)
+        print('pool inventory = ', inventories)
+        print('')
         
-        indices = np.clip( int((inventories-self.min_inventory)/self.env.trader.unit_size), 0, self.max_index)
+        
+        indices = np.clip( int((-inventories+self.max_inventory)/self.env.trader.unit_size), 0, self.max_index)
         indices = indices.astype(int)
-        indices_minus_one = np.clip(indices - 1, 0, self.max_index)
-        indices_plus_one = np.clip(indices + 1, 0, self.max_index)
+        
+        print('pool index = ', indices)
+        print('max index = ', self.max_index)
+        indices_minus_one = np.clip(indices + 1, 0, self.max_index)
+        indices_plus_one  = np.clip(indices - 1, 0, self.max_index)
         h_0 = h_t[indices]
         h_plus_one = h_t[indices_plus_one]
         h_minus_one = h_t[indices_minus_one]
@@ -282,3 +290,47 @@ class FayLeoMmAgent(Agent):
             if i > 0:
                 Amatrix[i, i - 1] = self.lambdas[ASK_INDEX] * np.exp(-1) * np.exp(self.kappa / self.env.midprice_model.jump_size_L)
         return Amatrix, z_vector
+    
+
+
+class ArbitrageurAmmAgent(Agent):
+    def __init__(
+        self,
+        env: TradingEnvironment = None,
+        agent: PoolMmAgent = None,
+        max_inventory: int = 150,
+        min_inventory: int = -150,
+        trade_size: int = 1,
+    ):
+        self.env = env or TradingEnvironment()
+        self.agent = agent
+        assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for AmmAgent is incorrect."
+        self.num_trajectories = self.env.num_trajectories
+        self.max_inventory = max_inventory
+        self.min_inventory = min_inventory
+        self.trade_size = trade_size
+        self.historical_pool_prices = []
+        
+    def get_action(self, state: np.ndarray):
+        price_S = self.env.midprice_model.current_state
+        price_Z = self.agent.env.midprice_model.current_state 
+        state_agent = self.agent.env.state
+        deltas = self.agent.get_action(state_agent)
+        delta_buy = deltas[:, BID_INDEX]
+        delta_sell = deltas[:, ASK_INDEX]
+        indicator_buy = (state[:,INVENTORY_INDEX] < self.max_inventory)
+        indicator_sell = (state[:,INVENTORY_INDEX] > self.min_inventory)
+
+        action = int((price_S>price_Z + delta_buy)*indicator_buy) - int((price_S<price_Z - delta_sell)*indicator_sell)
+        reshaped_action = np.reshape(action*self.trade_size, (self.num_trajectories,1))
+        # update the pool's agent's trader
+        print('S = ', price_S, ', Z=', price_Z, ' deltas = ', deltas, '   *** action = ', action)
+        self.agent.env._update_market_state(arrivals = np.ones((self.num_trajectories, 2)), 
+                                            fills    = np.concatenate( (reshaped_action<0, reshaped_action>0), axis=1), 
+                                            action   = deltas)
+        self.agent.env._update_agent_state(arrivals = np.ones((self.num_trajectories, 2)), 
+                                            fills    = np.concatenate( (reshaped_action<0, reshaped_action>0), axis=1), 
+                                            action   = deltas)
+        self.historical_pool_prices += [price_Z]
+        return reshaped_action
+ 
