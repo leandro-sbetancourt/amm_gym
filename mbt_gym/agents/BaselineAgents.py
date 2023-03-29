@@ -7,7 +7,7 @@ from scipy.linalg import expm
 
 from mbt_gym.agents.Agent import Agent
 from mbt_gym.gym.TradingEnvironment import TradingEnvironment, INVENTORY_INDEX, TIME_INDEX, BID_INDEX, ASK_INDEX
-from mbt_gym.rewards.RewardFunctions import CjMmCriterion, PnL
+from mbt_gym.rewards.RewardFunctions import CjMmCriterion, PnL, RunningTargetInventoryPenalty
 from mbt_gym.stochastic_processes.price_impact_models import PriceImpactModel, TemporaryAndPermanentPriceImpact
 from mbt_gym.stochastic_processes.midprice_models import AmmSelfContainedMidpriceModel
 
@@ -209,7 +209,7 @@ class PoolMmAgent(Agent):
         target_inventory: int = 100,
     ):
         self.env = env or TradingEnvironment()
-        assert isinstance(self.env.reward_function, (CjMmCriterion, PnL)), "Reward function for AmmAgent is incorrect."
+        assert isinstance(self.env.reward_function, (CjMmCriterion, PnL, RunningTargetInventoryPenalty)), "Reward function for AmmAgent is incorrect."
         assert isinstance(self.env.midprice_model, AmmSelfContainedMidpriceModel), "Midprice model for AMM trader is incorrect."
         self.kappa = self.env.fill_probability_model.fill_exponent 
         self.num_trajectories = self.env.num_trajectories
@@ -247,17 +247,18 @@ class PoolMmAgent(Agent):
         h_t = self._calculate_ht(current_time)
         # If the inventory goes above the max level, we quote a large depth to bring it back and quote on the opposite
         # side as if we had an inventory equal to sign(inventory) * self.max_inventory.
-        print('\n')
-        print('min inventory= ', self.min_inventory, ', max inventory:', self.max_inventory)
-        print('pool inventory = ', inventories)
-        print('')
+        
+        #print('\n')
+        #print('min inventory= ', self.min_inventory, ', max inventory:', self.max_inventory)
+        #print('pool inventory = ', inventories)
+        #print('')
         
         
         indices = np.clip( int((-inventories+self.max_inventory)/self.env.trader.unit_size), 0, self.max_index)
         indices = indices.astype(int)
         
-        print('pool index = ', indices)
-        print('max index = ', self.max_index)
+        #print('pool index = ', indices)
+        #print('max index = ', self.max_index)
         indices_minus_one = np.clip(indices + 1, 0, self.max_index)
         indices_plus_one  = np.clip(indices - 1, 0, self.max_index)
         h_0 = h_t[indices]
@@ -267,6 +268,7 @@ class PoolMmAgent(Agent):
         max_inventory_ask = indices_minus_one == indices
         deltas[:, BID_INDEX] = (1 / self.kappa - h_plus_one + h_0 + self.large_depth * max_inventory_bid - 1/self.env.midprice_model.jump_size_L).reshape(-1)
         deltas[:, ASK_INDEX] = (1 / self.kappa - h_minus_one + h_0 + self.large_depth * max_inventory_ask + 1/self.env.midprice_model.jump_size_L).reshape(-1)
+        #print('delta minus= ', deltas[:,BID_INDEX], ', delta plus:', deltas[:,ASK_INDEX])
         return deltas
 
     def _calculate_ht(self, current_time: float) -> float:
@@ -293,6 +295,9 @@ class PoolMmAgent(Agent):
     
 
 
+
+
+
 class ArbitrageurAmmAgent(Agent):
     def __init__(
         self,
@@ -316,12 +321,12 @@ class ArbitrageurAmmAgent(Agent):
         price_Z = self.agent.env.midprice_model.current_state 
         state_agent = self.agent.env.state
         deltas = self.agent.get_action(state_agent)
-        delta_buy = deltas[:, BID_INDEX]
-        delta_sell = deltas[:, ASK_INDEX]
+        delta_ask = deltas[:, ASK_INDEX]
+        delta_bid = deltas[:, BID_INDEX]
         indicator_buy = (state[:,INVENTORY_INDEX] < self.max_inventory)
         indicator_sell = (state[:,INVENTORY_INDEX] > self.min_inventory)
 
-        action = int((price_S>price_Z + delta_buy)*indicator_buy) - int((price_S<price_Z - delta_sell)*indicator_sell)
+        action = int((price_S>price_Z + delta_ask)*indicator_buy) - int((price_S<(price_Z - delta_bid))*indicator_sell)
         reshaped_action = np.reshape(action*self.trade_size, (self.num_trajectories,1))
         # update the pool's agent's trader
         print('S = ', price_S, ', Z=', price_Z, ' deltas = ', deltas, '   *** action = ', action)
