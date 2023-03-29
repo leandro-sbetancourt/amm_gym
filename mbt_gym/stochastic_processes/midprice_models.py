@@ -430,11 +430,15 @@ class AmmSelfContainedMidpriceModel(MidpriceModel):
         step_size: float = 0.01,
         num_trajectories: int = 1,
         unit_size: float = 1,
+        eta_plus: callable[float, float] = None,
+        eta_minus: callable[float, float] = None,
         seed: Optional[int] = None,
     ):
         self.jump_size_L = jump_size_L
         self.terminal_time = terminal_time
         self.unit_size = unit_size
+        self.eta_plus = eta_plus
+        self.eta_minus = eta_minus
         super().__init__(
             min_value=np.array([[initial_price - (self._get_max_value(initial_price, terminal_time) - initial_price)]]),
             max_value=np.array([[self._get_max_value(initial_price, terminal_time)]]),
@@ -449,8 +453,15 @@ class AmmSelfContainedMidpriceModel(MidpriceModel):
         fills_bid = fills[:, BID_INDEX] * arrivals[:, BID_INDEX]
         fills_ask = fills[:, ASK_INDEX] * arrivals[:, ASK_INDEX]
         previous_inventory = state[:, INVENTORY_INDEX] - fills_bid + fills_ask
-        eta_ask = self.unit_size /( self.jump_size_L  * (previous_inventory - self.unit_size))
-        eta_bid = self.unit_size /( self.jump_size_L  * (previous_inventory + self.unit_size))
+        if self.eta_plus is not None:
+            eta_ask = self.eta_plus(previous_inventory, self.unit_size)
+        else:
+            eta_ask = self.unit_size /( self.jump_size_L  * (previous_inventory - self.unit_size))
+        
+        if self.eta_minus is not None:
+            eta_bid = self.eta_minus(previous_inventory, self.unit_size)
+        else:
+            eta_bid = self.unit_size /( self.jump_size_L  * (previous_inventory + self.unit_size))
         self.current_state = (
             self.current_state
             +  (fills_ask * eta_ask -  fills_bid * eta_bid).reshape(-1,1)
