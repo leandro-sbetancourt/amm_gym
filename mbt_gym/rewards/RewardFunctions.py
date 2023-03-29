@@ -145,6 +145,37 @@ class RunningInventoryPenalty(RewardFunction):
         pass
 
 
+
+class RunningTargetInventoryPenalty(RewardFunction):
+    def __init__(
+        self,
+        per_step_inventory_aversion: float = 0.01,
+        terminal_inventory_aversion: float = 0.0,
+        inventory_exponent: float = 2.0,
+        target_inventory: float = 100,
+    ):
+        self.per_step_inventory_aversion = per_step_inventory_aversion
+        self.terminal_inventory_aversion = terminal_inventory_aversion
+        self.pnl = PnL()
+        self.inventory_exponent = inventory_exponent
+        self.target_inventory = target_inventory
+
+    def calculate(
+        self, current_state: np.ndarray, action: np.ndarray, next_state: np.ndarray, is_terminal_step: bool = False
+    ) -> float:
+        dt = next_state[:, TIME_INDEX] - current_state[:, TIME_INDEX]
+        return (
+            self.pnl.calculate(current_state, action, next_state, is_terminal_step)
+            - dt * self.per_step_inventory_aversion * (next_state[:, INVENTORY_INDEX] - self.target_inventory) ** self.inventory_exponent
+            - self.terminal_inventory_aversion
+            * int(is_terminal_step)
+            * (next_state[:, INVENTORY_INDEX] - self.target_inventory) ** self.inventory_exponent
+        )
+
+    def reset(self, initial_state: np.ndarray):
+        pass
+
+
 # Cartea and Jaimungal criterion is the same as inventory adjusted PnL
 
 CjCriterion = RunningInventoryPenalty
