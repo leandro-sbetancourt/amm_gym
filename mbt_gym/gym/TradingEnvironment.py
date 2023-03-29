@@ -42,7 +42,7 @@ class TradingEnvironment(gym.Env):
         trader: Trader = None,
         initial_cash: float = 0.0,
         initial_inventory: Union[int, Tuple[float, float]] = 0,  # Either a deterministic initial inventory, or a tuple
-        min_inventory: int = 100,  # representing the mean and variance of it.
+        min_inventory: int = -150,  # representing the mean and variance of it.
         max_inventory: int = 150,  # representing the mean and variance of it.
         max_cash: float = None,
         max_stock_price: float = None,
@@ -165,7 +165,7 @@ class TradingEnvironment(gym.Env):
 
     @property
     def is_at_min_inventory(self):
-        return self.state[:, INVENTORY_INDEX] <= -self.max_inventory
+        return self.state[:, INVENTORY_INDEX] <= self.min_inventory
 
     @property
     def step_size(self):
@@ -238,7 +238,7 @@ class TradingEnvironment(gym.Env):
         """The observation space consists of a numpy array containg the agent's cash, the agent's inventory and the
         current time. It also contains the states of the arrival model, the midprice model and the fill probability
         model in that order."""
-        low = np.array([-self.max_cash, -self.max_inventory, 0])
+        low = np.array([-self.max_cash, self.min_inventory, 0])
         high = np.array([self.max_cash, self.max_inventory, self.terminal_time])
         for process in self.stochastic_processes.values():
             low = np.append(low, process.min_value)
@@ -287,7 +287,7 @@ class TradingEnvironment(gym.Env):
 
     def _clip_inventory_and_cash(self):
         self.state[:, INVENTORY_INDEX] = self._clip(
-            self.state[:, INVENTORY_INDEX], -self.max_inventory, self.max_inventory, cash_flag=False
+            self.state[:, INVENTORY_INDEX], self.min_inventory, self.max_inventory, cash_flag=False
         )
         self.state[:, CASH_INDEX] = self._clip(self.state[:, CASH_INDEX], -self.max_cash, self.max_cash, cash_flag=True)
 
