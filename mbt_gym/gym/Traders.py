@@ -332,6 +332,58 @@ class AmmTrader(Trader):
         return arrivals, fills
 
 
+
+
+class AmmGeoTrader(Trader):
+    """Trader in the AMM setup of Fay & Leo."""
+    def __init__(
+        self,
+        midprice_model : MidpriceModel  = None,
+        arrival_model : ArrivalModel  = None,
+        fill_probability_model : FillProbabilityModel  = None,
+        num_trajectories: int = 1,
+        seed: int = None,
+        max_depth : float = None,
+        unit_size : float = None,
+    ):
+        super().__init__(midprice_model = midprice_model,
+                        arrival_model = arrival_model,
+                        fill_probability_model = fill_probability_model, 
+                        num_trajectories = num_trajectories,
+                        seed = seed)
+        self.max_depth = max_depth or self._get_max_depth()
+        self.unit_size = unit_size or 1.0
+        self.required_processes = self.get_required_stochastic_processes()
+        self._check_processes_are_not_none(self.required_processes)
+        self.round_initial_inventory = False
+    
+    def update_state(self, state: np.ndarray, arrivals: np.ndarray, fills: np.ndarray, action: np.ndarray):
+        state[:, INVENTORY_INDEX] += np.sum(arrivals * fills * -self._fill_multiplier * self.unit_size, axis=1)
+        state[:, CASH_INDEX] += np.sum(
+                self._fill_multiplier
+                * arrivals
+                * fills
+                * (self.midprice + self._limit_depths(action) * self._fill_multiplier),
+                axis=1,
+            )
+    
+    def get_action_space(self) -> gym.spaces.Space:
+        assert self.max_depth is not None, "For limit orders max_depth cannot be None."
+        # agent chooses spread on bid and ask
+        return gym.spaces.Box(low=np.float32(0.0), high=np.float32(self.max_depth), shape=(2,))
+    
+    def get_required_stochastic_processes(self):
+        processes = ["arrival_model", "fill_probability_model"]
+        return processes
+
+    def get_arrivals_and_fills(self, action: np.ndarray):
+
+        arrivals = self.arrival_model.get_arrivals()
+        depths = self._limit_depths(action)
+        fills = self.fill_probability_model.get_fills(depths)
+        return arrivals, fills
+
+
 class MarketOrderTrader(Trader):
     """Trader for 'market'."""
     def __init__(

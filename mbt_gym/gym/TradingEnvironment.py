@@ -231,6 +231,13 @@ class TradingEnvironment(gym.Env):
         self._clip_inventory_and_cash()
         self.state[:, TIME_INDEX] += self.step_size
 
+    def _update_agent_state_no_time(self, arrivals: np.ndarray, fills: np.ndarray, action: np.ndarray):
+        self.trader.update_state(self.state, arrivals, fills, action)
+        self._clip_inventory_and_cash()
+
+    def _update_clock(self):
+        self.state[:, TIME_INDEX] += self.step_size
+
     def _get_max_cash(self) -> float:
         return self.n_steps * self.max_stock_price  # TODO: make this a tighter bound
 
@@ -276,6 +283,8 @@ class TradingEnvironment(gym.Env):
         if isinstance(self.initial_inventory, tuple) and len(self.initial_inventory) == 2:
             return self.rng.integers(*self.initial_inventory, size=self.num_trajectories)
         elif isinstance(self.initial_inventory, int):
+            return self.initial_inventory * np.ones((self.num_trajectories,))
+        elif isinstance(self.initial_inventory, float):
             return self.initial_inventory * np.ones((self.num_trajectories,))
         elif isinstance(self.initial_inventory, Callable):
             initial_inventory = self.initial_inventory()
