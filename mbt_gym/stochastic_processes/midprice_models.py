@@ -430,20 +430,19 @@ class AmmSelfContainedMidpriceModel(MidpriceModel):
         step_size: float = 0.01,
         num_trajectories: int = 1,
         unit_size: float = 1,
-        eta_bid: callable = None,
-        eta_ask: callable = None,
+        eta_bid: callable = lambda y, Delta, L: Delta / (L  * (y - Delta)),
+        eta_ask: callable = lambda y, Delta, L: Delta / (L  * (y + Delta)),
         seed: Optional[int] = None,
     ):
         self.jump_size_L = jump_size_L
         self.terminal_time = terminal_time
         self.unit_size = unit_size
-        self.eta_bid = eta_bid
         self.eta_ask = eta_ask
+        self.eta_bid = eta_bid
 
-        if self.eta_ask is None:
-            self.eta_ask = lambda y, Delta, L: Delta / (L  * (y - Delta))
-        if self.eta_bid is None:
-            self.eta_bid = lambda y, Delta, L: Delta / (L  * (y + Delta))
+        if eta_bid is None: self.eta_bid = lambda y, Delta, L: Delta / (L  * (y - Delta))
+        if eta_ask is None: self.eta_ask = lambda y, Delta, L: Delta / (L  * (y + Delta))
+
         super().__init__(
             min_value=np.array([[initial_price - (self._get_max_value(initial_price, terminal_time) - initial_price)]]),
             max_value=np.array([[self._get_max_value(initial_price, terminal_time)]]),
@@ -511,3 +510,34 @@ class AmmSelfContainedMidGeopriceModel(MidpriceModel):
 
     def _get_max_value(self, initial_price, terminal_time):
         return initial_price * 2 
+
+
+
+
+class MarketDataReplayModel(MidpriceModel):
+    def __init__(
+        self,
+        historical_data: np.array = None,
+        num_trajectories: int = 1,
+    ):
+        self.historical_data = historical_data # this should be of shape (nb_data, num_trajectories)
+        self.current_index  = 0
+        
+        super().__init__(
+            min_value=np.array([[-np.inf]]),
+            max_value=np.array([[np.inf]]),
+            step_size=0.01,
+            terminal_time=1.0,
+            initial_state=np.array([[self.historical_data[0]]]),
+            num_trajectories=num_trajectories,
+            seed=None,
+        )
+
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None) -> np.ndarray:
+        self.current_state = (
+            self.historical_data[self.current_index]
+        )
+        self.current_index += 1 # should not go over np.shape(self.historical_data)[0]
+
+    def _get_max_value(self, initial_price, terminal_time):
+        return np.max(self.historical_data)
