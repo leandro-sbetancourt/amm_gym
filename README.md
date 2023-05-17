@@ -5,5 +5,6 @@ This repository can be used to replicate the results for "Designs for Automated 
 
 The paper is at: SSRN link
 
+The data should be put in notebooks/data
 To produce Figure 1 and Table 1 in the paper please run CQV Model study.
 To produce Figures 2,3,4 and Table 2 run the other two notebooks.
