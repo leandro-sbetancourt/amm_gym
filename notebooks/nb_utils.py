@@ -1,7 +1,7 @@
 import sys
 sys.path.append("../") # This version of the notebook is in the subfolder "notebooks" of the repo
 
-import gym
+#import gym
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -108,9 +108,9 @@ def getSimulationData(arb_agent, observations, initial_pool_value, initial_inven
     
     allData['poolValue'] = allData.pool_inv_y*allData.S + allData.pool_inv_x
     allData['poolValue'] -= allData['poolValue'].iloc[0]
-    allData['Hodl']      = max_risk*allData.Z - max_risk*allData.Z.iloc[0]
-    allData['Hodl']      = allData.pool_inv_y*allData.S - (allData.pool_inv_y*allData.S).iloc[0]
-    allData['Hodl']      = (allData.pool_inv_y * allData.Z.diff(1).shift(-1)).cumsum().fillna(method='ffill')
+    allData['Buy and Hold']      = max_risk*allData.Z - max_risk*allData.Z.iloc[0]
+    allData['Buy and Hold']      = allData.pool_inv_y*allData.S - (allData.pool_inv_y*allData.S).iloc[0]
+    allData['Buy and Hold']      = (allData.pool_inv_y * allData.Z.diff(1).shift(-1)).cumsum().fillna(method='ffill')
 
     allData['LPWealth']  = allData.pool_earnings + (allData.pool_inv_y*allData.Z+ allData.pool_inv_x)
     
@@ -159,9 +159,9 @@ def getSimulationData2(initial_pool_value, initial_inventory_pool,
     
     allData['poolValue'] = allData.pool_inv_y*allData.S + allData.pool_inv_x
     allData['poolValue'] -= allData['poolValue'].iloc[0]
-    allData['Hodl']      = max_risk*allData.Z - max_risk*allData.Z.iloc[0]
-    allData['Hodl']      = allData.pool_inv_y*allData.S - (allData.pool_inv_y*allData.S).iloc[0]
-    allData['Hodl']      = (allData.pool_inv_y * allData.Z.diff(1).shift(-1)).cumsum().fillna(method='ffill')
+    allData['Buy and Hold']      = max_risk*allData.Z - max_risk*allData.Z.iloc[0]
+    allData['Buy and Hold']      = allData.pool_inv_y*allData.S - (allData.pool_inv_y*allData.S).iloc[0]
+    allData['Buy and Hold']      = (allData.pool_inv_y * allData.Z.diff(1).shift(-1)).cumsum().fillna(method='ffill')
 
     allData['LPWealth']  = allData.pool_earnings + (allData.pool_inv_y*allData.Z+ allData.pool_inv_x)
     
@@ -516,7 +516,7 @@ def getOneSimulationData(initial_pool_value, initial_inventory_pool,
     
     allData['poolValue'] = allData.pool_inv_y*allData.S + allData.pool_inv_x + allData.pool_adjustments 
     allData['poolValue'] -= allData['poolValue'].iloc[0]
-    allData['Hodl']      = max_risk*allData.S - max_risk*allData.S.iloc[0]
+    allData['Buy and Hold']      = max_risk*allData.S - max_risk*allData.S.iloc[0]
     allData['LPWealth']  = allData.pool_earnings + allData.poolValue 
     
     return allData, bid_history, ask_history
@@ -613,17 +613,17 @@ def plot_one_sim_result(_allData, bothPrices, uniswapindex,
         ax.set_axisbelow(True)
 
     ax2.plot(_allData.index , _allData['poolValue'], color='k', lw=3)
-    ax2.plot(_allData.index , _allData['Hodl'], color='blue', lw=3)
+    ax2.plot(_allData.index , _allData['Buy and Hold'], color='blue', lw=3)
     ax2.plot(_allData.index , _allData['pool_earnings'], color='gray', lw=3)
     ax2.plot(_allData.index , _allData['LPWealth'], color='lightcoral', lw=3)
 
-    ax2.fill_between(_allData.index, 
-                     _allData['Hodl'],
-                     _allData['poolValue'], 
-                     alpha=0.4, facecolor='lightcoral', hatch="ooo", edgecolor="grey")
+    #ax2.fill_between(_allData.index, 
+    #                 _allData['Buy and Hold'],
+    #                 _allData['poolValue'], 
+    #                 alpha=0.4, facecolor='lightcoral', hatch="ooo", edgecolor="grey")
 
-    ax2.legend(['Pool value', 'Hodl', 'Earnings', 'LP total wealth', 'Impermanent Loss'], 
-               fancybox=True, framealpha=0.2, handlelength=0.5, ncol=1, loc='lower left')
+    ax2.legend(['Pool value', 'Buy and Hold', 'Earnings', 'LP total wealth'], 
+               fancybox=True, framealpha=0.2, handlelength=0.5, ncol=1, loc='center right')
 
     ax1.yaxis.set_major_formatter(mtick.StrMethodFormatter('\${x:,.0f}'))
     ax2.yaxis.set_major_formatter(mtick.StrMethodFormatter('\${x:,.0f}'))
