@@ -262,32 +262,37 @@ def get_arb_env(pool_agent, historical_data, num_trajectories, seed, terminal_ti
 def get_LT_LP_Binance_data(LTdata, LPdata, BinanceData, trade_date, from_datetime, to_datetime):
     oneDayLPdata = LPdata[ ((LPdata.timestamp<=to_datetime) & (LPdata.timestamp>from_datetime))].set_index('timestamp')
     oneDayLTdata = LTdata[ ((LTdata.timestamp<=to_datetime) & (LTdata.timestamp>from_datetime))].set_index('timestamp')
-    oneDayLTdata['executionPrice'] = -oneDayLTdata['amount0'].astype(float)/oneDayLTdata['amount1'].astype(float)
-    
-    oneDayLTdata['convexity'] = 2 * oneDayLTdata.executionPrice**1.5  / oneDayLTdata.kappa
-    
     trade_date   = from_datetime.split(' ')[0]
     oneDaybinanceLTdata = BinanceData[ ((BinanceData.index<=to_datetime) &
-                                        (BinanceData.index>from_datetime))]
-    
-    # preapre other auxiliary data
-    fill_exponents  = (2/oneDayLTdata['convexity']).values
-    pool_sizes      = (2 *  oneDayLTdata.kappa * oneDayLTdata.executionPrice ** 0.5).values # This is in USDC
-    hist_prices  = oneDaybinanceLTdata.price.values
+                                            (BinanceData.index>from_datetime))]
+        
+    if ((len(oneDayLTdata)>10) and (len(oneDaybinanceLTdata)>10)):
 
-    initial_convexity = oneDayLTdata['convexity'].iloc[0]
-    #trade_size_model  = (pool_sizes[0] * 0.2) / hist_prices[0] / 5000 # matrix of size 1000
-    trade_sizes       = oneDayLTdata.amount1.abs()#/trade_size_model
-    
-    bothPrices    = pd.concat((oneDaybinanceLTdata.price.reset_index().groupby('time').last().sort_index(), 
-                           oneDayLTdata.poolPricePrev.reset_index().groupby('timestamp').last().sort_index()), axis=1
-                          ).fillna(method='ffill').fillna(method='bfill').loc[oneDaybinanceLTdata.index, :]
+        oneDayLTdata['executionPrice'] = -oneDayLTdata['amount0'].astype(float)/oneDayLTdata['amount1'].astype(float)
 
-    
-    return oneDayLTdata, oneDayLPdata, oneDaybinanceLTdata,\
-            fill_exponents, pool_sizes, hist_prices,\
-            initial_convexity, trade_sizes, bothPrices
+        oneDayLTdata['convexity'] = 2 * oneDayLTdata.executionPrice**1.5  / oneDayLTdata.kappa
 
+        # preapre other auxiliary data
+        fill_exponents  = (2/oneDayLTdata['convexity']).values
+        pool_sizes      = (2 *  oneDayLTdata.kappa * oneDayLTdata.executionPrice ** 0.5).values # This is in USDC
+        hist_prices     = oneDaybinanceLTdata.price.values
+
+        initial_convexity = oneDayLTdata['convexity'].iloc[0]
+        #trade_size_model  = (pool_sizes[0] * 0.2) / hist_prices[0] / 5000 # matrix of size 1000
+        trade_sizes       = oneDayLTdata.amount1.abs()#/trade_size_model
+
+        bothPrices    = pd.concat((oneDaybinanceLTdata.price.reset_index().groupby('time').last().sort_index(), 
+                               oneDayLTdata.poolPricePrev.reset_index().groupby('timestamp').last().sort_index()), axis=1
+                              ).fillna(method='ffill').fillna(method='bfill').loc[oneDaybinanceLTdata.index, :]
+
+
+        return oneDayLTdata, oneDayLPdata, oneDaybinanceLTdata,\
+                fill_exponents, pool_sizes, hist_prices,\
+                initial_convexity, trade_sizes, bothPrices
+    else:
+        return oneDayLTdata, oneDayLPdata, oneDaybinanceLTdata,\
+                None, None, None,\
+                None, None, None
 
 def get_binance_month_data(s_month):
     oneDaybinanceLTdata = pd.read_csv(f"data/ETHUSDC-trades-{s_month}.csv", index_col=0, header=None)
@@ -525,7 +530,6 @@ def getOneSimulationData(initial_pool_value, initial_inventory_pool,
 def plot_impact_curves(pool_agent, maxTradeSize, unit_size, jump_size_L, initial_convexity, initial_inventory_pool):
     fig, axes = plt.subplots(1, 2, sharex = False, constrained_layout = True)
 
-    maxTradeSize  = 50
     trade_size    = np.arange(unit_size, maxTradeSize, unit_size)
     trade_size2   = np.arange(unit_size, maxTradeSize, unit_size)
 
